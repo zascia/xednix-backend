@@ -61,8 +61,8 @@ def login():
     if user and bcrypt.check_password_hash(user.password_hash, password):
 
         # 3. Генерация JWT-токена
-        # Мы кодируем ID пользователя в токен
-        access_token = create_access_token(identity=user.id)
+        # Мы кодируем ID пользователя в токен !!! user.id преобразуется В СТРОКУ!
+        access_token = create_access_token(identity=str(user.id))
 
         logger.info(f"User {user.username} successfully logged in.")
 
@@ -81,9 +81,9 @@ def login():
 @app.route('/dashboard', methods=['GET'])
 @jwt_required() # <--- ЭТО ЗАЩИЩАЕТ МАРШРУТ
 def dashboard():
-    # Получаем ID пользователя из токена
+    # Получаем ID пользователя из токена (помнить, что current_user_id это строка)
     current_user_id = get_jwt_identity()
-    user = User.query.get(current_user_id)
+    user = User.query.get(int(current_user_id))
 
     if user:
         return jsonify({
