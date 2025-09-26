@@ -3,7 +3,7 @@ import os
 from dotenv import load_dotenv
 from flask import jsonify, request
 from app import app, db, bcrypt
-from models import User
+from models import User, JobResource
 import logging
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -113,13 +113,29 @@ def get_job_resources():
 @app.route('/api/resource/add', methods=['POST'])
 @jwt_required() # Защищен токеном
 def add_job_resource():
-    # ... (логика получения данных, добавления в БД и обработки ошибок)
-    # Используйте Postman для добавления Jooble, LinkedIn, Indeed.
-    # Пример:
-    # new_resource = JobResource(name='Jooble', base_url='https://jooble.org/api/', api_key_required=True)
-    # db.session.add(new_resource)
-    # db.session.commit()
-    pass
+    data = request.get_json()
+    if not data or not data.get('name') or not data.get('base_url'):
+        return jsonify({'error': 'Name and URL are required'}), 400
+
+    if JobResource.query.filter_by(name=data['name']).first():
+        return jsonify({'error': f"Resource {data['name']} already exists"}), 409
+
+    new_resource = JobResource(
+        name=data['name'],
+        base_url=data['base_url'],
+        is_active=data.get('is_active', True),
+        api_key_required=data.get('api_key_required', False)
+    )
+
+    try:
+        db.session.add(new_resource)
+        db.session.commit()
+        return jsonify({'message': f'Resource {new_resource.name} added successfully'}), 201
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error adding resource: {e}")
+        return jsonify({'error': 'Database error occurred'}), 500
+
 
 # обрабатывает поисковый запрос и список выбранных ресурсов, выполняя вызов к Jooble API
 @app.route('/api/search', methods=['POST'])
@@ -130,6 +146,10 @@ def search_jobs():
     resource_ids = data.get('resourceIds')
 
     # ... (проверка входных данных)
+    if not term or not resource_ids:
+        return jsonify({'error': 'Search term and at least one resource must be selected'}), 400
+
+
 
     results = []
     resources_to_search = JobResource.query.filter(JobResource.id.in_(resource_ids)).all()
@@ -140,15 +160,39 @@ def search_jobs():
                 logger.error("JOOBLE_API_KEY is missing from environment variables.")
                 return jsonify({'error': 'Server configuration error: API key missing'}), 500
 
-            # ... (используйте ключ в запросе к Jooble) ...
-            jooble_url = f"{resource.base_url}{JOOBLE_API_KEY}"
 
-            # ... (логика формирования JSON-запроса для Jooble)
-            # Убедитесь, что ваш Jooble-запрос включает нужные локации (Europe, Ukraine, USA)
+            try:
+                # 1. Формирование запроса Jooble
+                json_data = {
+                    "keywords": term,
+                    "location": "Europe, Ukraine, USA", # Локации
+                    "page": 1
+                }
 
-            # ... (выполнение requests.post к Jooble)
+                jooble_url = f"{resource.base_url}{JOOBLE_API_KEY}"
 
-            # ... (обработка и форматирование результатов в единый формат 'id', 'title', 'company', 'link', 'source' и т.д.)
+                # 2. Выполнение запроса
+                response = requests.post(jooble_url, json=json_data)
+                response.raise_for_status() # Обработка ошибок HTTP
+                jooble_data = response.json()
+
+                # 3. Обработка и форматирование результатов
+                if 'jobs' in jooble_data:
+                    for job in jooble_data['jobs']:
+                        results.append({
+                            'id': f"jooble_{job.get('id')}",
+                            'title': job.get('title'),
+                            'company': job.get('company'),
+                            'location': job.get('location'),
+                            'salary': job.get('salary') or 'N/A',
+                            'source': resource.name,
+                            'link': job.get('link')
+                        })
+
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Error fetching data from Jooble: {e}")
+                results.append({'error': f'Jooble search failed: {e}'})
+
 
             # ВАЖНО: Здесь будет место для внедрения ИИ-матчинга
             #
