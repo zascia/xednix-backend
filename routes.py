@@ -1,3 +1,6 @@
+import requests
+import os
+from dotenv import load_dotenv
 from flask import jsonify, request
 from app import app, db, bcrypt
 from models import User
@@ -6,6 +9,9 @@ from flask_jwt_extended import create_access_token
 from flask_jwt_extended import jwt_required, get_jwt_identity
 
 logger = logging.getLogger(__name__)
+
+load_dotenv()
+JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY")
 
 @app.route('/')
 def hello_world():
@@ -93,4 +99,64 @@ def dashboard():
         }), 200
 
     return jsonify({"error": "User not found"}), 404
+
+
+# (Маршрут получения ресурсов, доступных для поиска вакансий)
+@app.route('/api/resources', methods=['GET'])
+@jwt_required()
+def get_job_resources():
+    active_resources = JobResource.query.filter_by(is_active=True).all()
+    resources_list = [resource.to_dict() for resource in active_resources]
+    return jsonify(resources_list), 200
+
+# Маршрут добавления ресурсов для администратора/тестирования
+@app.route('/api/resource/add', methods=['POST'])
+@jwt_required() # Защищен токеном
+def add_job_resource():
+    # ... (логика получения данных, добавления в БД и обработки ошибок)
+    # Используйте Postman для добавления Jooble, LinkedIn, Indeed.
+    # Пример:
+    # new_resource = JobResource(name='Jooble', base_url='https://jooble.org/api/', api_key_required=True)
+    # db.session.add(new_resource)
+    # db.session.commit()
+    pass
+
+# обрабатывает поисковый запрос и список выбранных ресурсов, выполняя вызов к Jooble API
+@app.route('/api/search', methods=['POST'])
+@jwt_required()
+def search_jobs():
+    data = request.get_json()
+    term = data.get('searchTerm')
+    resource_ids = data.get('resourceIds')
+
+    # ... (проверка входных данных)
+
+    results = []
+    resources_to_search = JobResource.query.filter(JobResource.id.in_(resource_ids)).all()
+
+    for resource in resources_to_search:
+        if resource.name == 'Jooble':
+            if not JOOBLE_API_KEY:
+                logger.error("JOOBLE_API_KEY is missing from environment variables.")
+                return jsonify({'error': 'Server configuration error: API key missing'}), 500
+
+            # ... (используйте ключ в запросе к Jooble) ...
+            jooble_url = f"{resource.base_url}{JOOBLE_API_KEY}"
+
+            # ... (логика формирования JSON-запроса для Jooble)
+            # Убедитесь, что ваш Jooble-запрос включает нужные локации (Europe, Ukraine, USA)
+
+            # ... (выполнение requests.post к Jooble)
+
+            # ... (обработка и форматирование результатов в единый формат 'id', 'title', 'company', 'link', 'source' и т.д.)
+
+            # ВАЖНО: Здесь будет место для внедрения ИИ-матчинга
+            #
+            # if USE_AI_MATCHING:
+            #     matched_jobs = ai_matcher(raw_jobs, applicant_skills)
+            #     results.extend(matched_jobs)
+            # else:
+            #     results.extend(formatted_jobs)
+
+    return jsonify(results), 200
 
