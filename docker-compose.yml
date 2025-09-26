@@ -1,0 +1,48 @@
+services:
+
+  # 1. База данных PostgreSQL (уже настроена, но теперь в Compose)
+  postgres:
+    image: postgres:latest
+    container_name: some-postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: mysecretpassword
+      POSTGRES_DB: postgres
+    ports:
+      - "5432:5432"
+
+  # 2. Сервер логирования Loki
+  loki:
+    image: grafana/loki:latest
+    container_name: loki
+    ports:
+      - "3100:3100"
+
+  # 3. Агент Promtail (будет считывать логи Flask)
+  promtail:
+    image: grafana/promtail:latest
+    container_name: promtail
+    volumes:
+      # Promtail должен видеть логи нашего Flask-приложения, поэтому он монтируется сюда:
+      - ./logs:/var/log/xednix_app
+      # Конфигурация Promtail
+      - ./promtail-config.yml:/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/config.yml
+
+  # 4. Панель мониторинга Grafana
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    # Зависит от Loki, чтобы быть уверенным, что Loki запущен
+    depends_on:
+      - loki
+
+  # 5. Ваше Flask-приложение (нужно будет запустить его вручную в отдельном терминале,
+  # но можно и тут, если подготовить Dockerfile)
+  # app:
+  #   ...
