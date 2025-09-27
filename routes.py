@@ -3,10 +3,11 @@ import os
 from dotenv import load_dotenv
 from flask import jsonify, request
 from app import app, db, bcrypt
-from models import User, JobResource
+from models import User, JobResource, ApplicantProfile, Skill
 import logging
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
 
@@ -203,4 +204,63 @@ def search_jobs():
             #     results.extend(formatted_jobs)
 
     return jsonify(results), 200
+
+# Маршрут для получения или создания профиля соискателя
+@app.route('/api/profile', methods=['GET', 'POST'])
+@jwt_required()
+def handle_applicant_profile():
+    user_id = get_jwt_identity()
+
+    if request.method == 'GET':
+        # Получение данных профиля
+        profile = ApplicantProfile.query.filter_by(user_id=user_id).first()
+
+        if not profile:
+            return jsonify({'message': 'Profile not created yet'}), 404
+
+        # Преобразование навыков для фронтенда
+        skills_list = [skill.name for skill in profile.skills]
+
+        return jsonify({
+            'role': profile.identified_role,
+            'resume_status': 'Loaded' if profile.resume_text else 'Empty',
+            'skills': skills_list
+        }), 200
+
+    elif request.method == 'POST':
+        data = request.get_json()
+
+        # 1. Поиск или создание профиля
+        profile = ApplicantProfile.query.filter_by(user_id=user_id).first()
+        if not profile:
+            profile = ApplicantProfile(user_id=user_id)
+            db.session.add(profile)
+
+        # 2. Обновление роли и резюме
+        if data.get('identified_role'):
+            profile.identified_role = data['identified_role']
+
+        if data.get('resume_text'):
+            profile.resume_text = data['resume_text']
+
+        # 3. Обновление навыков (для ручного ввода или анализа)
+        if data.get('skills'):
+            # Очищаем старые навыки и добавляем новые
+            profile.skills.clear()
+            for skill_name in data['skills']:
+                # Ищем или создаем новый навык в таблице Skill
+                skill = Skill.query.filter_by(name=skill_name).first()
+                if not skill:
+                    skill = Skill(name=skill_name)
+                    db.session.add(skill)
+                profile.skills.append(skill)
+
+        try:
+            db.session.commit()
+            return jsonify({'message': 'Profile updated successfully'}), 200
+        except IntegrityError:
+            db.session.rollback()
+            return jsonify({'error': 'Error saving profile data'}), 500
+
+
 
