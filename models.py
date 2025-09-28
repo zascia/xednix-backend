@@ -1,10 +1,13 @@
 from app import db
+from datetime import datetime
 
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
     email = db.Column(db.String(120), unique=True, nullable=False)
     password_hash = db.Column(db.String(128), nullable=False)
+    date_started = db.Column(db.DateTime, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def __repr__(self):
         return f'<User {self.username}>'
@@ -20,6 +23,10 @@ class ApplicantProfile(db.Model):
 
     # Хранение текста резюме (если загружено)
     resume_text = db.Column(db.Text, nullable=True)
+
+    date_started = db.Column(db.DateTime, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
 
     # Связь с пользователем
     user = db.relationship('User', backref=db.backref('profile', uselist=False))
@@ -62,6 +69,9 @@ class RoleFocus(db.Model):
     # Например: {'Python': 'продвинутый', 'SQL': 'средний', 'Content Creation': 'начальный'}
     focused_skills_data = db.Column(db.Text, nullable=True)
 
+    date = db.Column(db.DateTime, default=datetime.utcnow) # date записывается при создании
+
+
     profile = db.relationship('ApplicantProfile', backref=db.backref('role_focuses', lazy=True))
 
     def __repr__(self):
@@ -75,6 +85,8 @@ class JobResource(db.Model):
     base_url = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True)
     api_key_required = db.Column(db.Boolean, default=False)
+    date_started = db.Column(db.DateTime, default=datetime.utcnow)
+    date_updated = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     def to_dict(self):
         # Используется для отправки данных на фронтенд
