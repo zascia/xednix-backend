@@ -576,3 +576,95 @@ def save_blind_profile():
         db.session.rollback()
         print(f"Database error: {e}")
         return jsonify({'message': 'An error occurred while saving the profile'}), 500
+
+
+# Маршрут, который принимает список навыков для матчинга, для исключения и сохраняет их в таблицах Skill и ApplicantProfile.
+@app.route('/api/profile/skills/full', methods=['POST'])
+@jwt_required()
+def save_full_skills():
+    """
+    Сохранение полного набора навыков соискателя (100% дата сет)
+    и списка исключаемых навыков для текущей цели поиска.
+    ---
+    tags:
+      - Профиль
+    security:
+      - Bearer: []
+    parameters:
+      - in: body
+        name: skills_data
+        required: true
+        schema:
+          type: object
+          properties:
+            skills:
+              type: array
+              items:
+                type: string
+              description: Полный список включаемых навыков.
+            excluded_skills:
+              type: array
+              items:
+                type: string
+              description: Список навыков, которые нужно исключить из матчинга.
+    responses:
+      200:
+        description: Навыки успешно обновлены.
+      400:
+        description: Отсутствуют навыки в списке.
+    """
+    user_id = get_jwt_identity()
+    data = request.get_json()
+    skills_list = data.get('skills', [])
+    excluded_skills_list = data.get('excluded_skills', [])
+
+    if not skills_list:
+        return jsonify({'message': 'Skills list cannot be empty'}), 400
+
+    try:
+        # 1. Находим/создаем основной профиль (ApplicantProfile)
+        profile = ApplicantProfile.query.filter_by(user_id=user_id).first()
+        if not profile:
+            profile = ApplicantProfile(user_id=user_id, identified_role="Manual Skill Set")
+            db.session.add(profile)
+            db.session.flush()
+
+        # 2. Обновление полного набора навыков (100% дата сет)
+        profile.skills.clear()
+        for skill_name in skills_list:
+            skill = Skill.query.filter_by(name=skill_name).first()
+            if not skill:
+                skill = Skill(name=skill_name)
+                db.session.add(skill)
+
+            profile.skills.append(skill)
+
+        # 3. Сохранение исключаемых навыков в RoleFocus
+
+        # Удаляем старую цель (фокус), так как это новая настройка
+        RoleFocus.query.filter_by(profile_id=profile.id).delete()
+
+        # Формируем JSON для RoleFocus, включая список исключений
+        focus_data_json = json.dumps({
+            'excluded_skills': excluded_skills_list,
+            'location': 'N/A' # Заглушка, если локация не была выбрана
+        })
+
+        # Создаем новую запись RoleFocus
+        focus = RoleFocus(
+            profile_id=profile.id,
+            target_role='Manual Skill Set',  # Временная роль для этого режима
+            target_level='All',
+            focused_skills_data=focus_data_json
+        )
+        db.session.add(focus)
+
+        db.session.commit()
+        return jsonify({'message': 'Full skill set and exclusions updated successfully'}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        logger.error(f"Error saving full skill set: {e}")
+        return jsonify({'error': 'An internal error occurred'}), 500
+
+
