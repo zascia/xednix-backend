@@ -172,7 +172,7 @@ def search_jobs():
                 # 1. Формирование запроса Jooble
                 json_data = {
                     "keywords": full_keywords,
-                    "location": location
+                    "location": location,
                     "page": 1
                 }
 
