@@ -3,7 +3,8 @@ import os
 from dotenv import load_dotenv
 from flask import jsonify, request
 from app import app, db, bcrypt
-from models import User, JobResource, ApplicantProfile, Skill
+from models import User, JobResource, ApplicantProfile, Skill, RoleFocus
+import json
 import logging
 from flask_jwt_extended import create_access_token
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -261,6 +262,51 @@ def handle_applicant_profile():
         except IntegrityError:
             db.session.rollback()
             return jsonify({'error': 'Error saving profile data'}), 500
+
+# Маршрут для сохранения профиля Слепого поиска
+@app.route('/api/profile/blind', methods=['POST'])
+@jwt_required()
+def save_blind_profile():
+    user_id = get_jwt_identity()
+    data = request.get_json()
+
+    # Обязательные поля для Слепого поиска
+    target_role = data.get('role')
+    target_level = data.get('level')
+    location = data.get('location') # Локацию мы будем хранить в focused_skills_data
+
+    if not target_role or not target_level:
+        return jsonify({'message': 'Missing role or level'}), 400
+
+    # 1. Находим или создаем основной профиль (ApplicantProfile)
+    profile = ApplicantProfile.query.filter_by(user_id=user_id).first()
+    if not profile:
+        profile = ApplicantProfile(user_id=user_id, identified_role=target_role)
+        db.session.add(profile)
+        db.session.commit() # Сохраняем, чтобы получить ID профиля
+
+    # 2. Очищаем старые целевые роли (RoleFocus), так как Слепой поиск - это новая цель
+    RoleFocus.query.filter_by(profile_id=profile.id).delete()
+
+    # 3. Создаем новую запись RoleFocus
+    # Храним роль, уровень и локацию в поле focused_skills_data (для гибкости)
+    focus = RoleFocus(
+        profile_id=profile.id,
+        target_role=target_role,
+        target_level=target_level,
+        focused_skills_data=json.dumps({'location': location})
+    )
+    db.session.add(focus)
+
+    try:
+        db.session.commit()
+        return jsonify({'message': 'Blind profile saved successfully'}), 201
+    except Exception as e:
+        db.session.rollback()
+        print(f"Database error: {e}")
+        return jsonify({'message': 'An error occurred while saving the profile'}), 500
+
+
 
 
 
