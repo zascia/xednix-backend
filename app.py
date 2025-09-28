@@ -8,8 +8,10 @@ from flask_cors import CORS
 from flask_migrate import Migrate
 from flask_jwt_extended import JWTManager
 import os
+from flasgger import Swagger
 
 app = Flask(__name__)
+swagger = Swagger(app)
 
 # Настройка логирования в файл
 if not app.debug:

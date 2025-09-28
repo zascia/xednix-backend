@@ -17,55 +17,11 @@ JOOBLE_API_KEY = os.getenv("JOOBLE_API_KEY")
 
 @app.route('/')
 def hello_world():
-    """
-    Проверка работоспособности API.
-    ---
-    tags:
-      - Общее
-    responses:
-      200:
-        description: Приветственное сообщение.
-        schema:
-          type: object
-          properties:
-            message:
-              type: string
-              example: Hello, Xednix!
-    """
     return jsonify({"message": "Hello, Xednix!"})
 
 
 @app.route('/register', methods=['POST'])
 def register():
-    """
-    Регистрация нового пользователя.
-    ---
-    tags:
-      - Аутентификация
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            username:
-              type: string
-              example: testuser
-            email:
-              type: string
-              example: user@example.com
-            password:
-              type: string
-              example: strongpassword123
-    responses:
-      201:
-        description: Пользователь успешно зарегистрирован.
-      400:
-        description: Обязательные поля не заполнены.
-      409:
-        description: Пользователь с таким email или логином уже существует.
-    """
     data = request.get_json()
 
     # Проверка на наличие всех полей
@@ -96,40 +52,6 @@ def register():
 # Маршрут для авторизации
 @app.route('/login', methods=['POST'])
 def login():
-    """
-    Авторизация пользователя.
-    ---
-    tags:
-      - Аутентификация
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            username_or_email:
-              type: string
-              description: Логин или email пользователя.
-              example: testuser
-            password:
-              type: string
-              example: strongpassword123
-    responses:
-      200:
-        description: Успешная авторизация, возвращает JWT токен.
-        schema:
-          type: object
-          properties:
-            access_token:
-              type: string
-            message:
-              type: string
-            username:
-              type: string
-      401:
-        description: Неверные учетные данные.
-    """
     data = request.get_json()
 
     if not data or not data.get('username_or_email') or not data.get('password'):
@@ -167,19 +89,6 @@ def login():
 @app.route('/dashboard', methods=['GET'])
 @jwt_required() # <--- ЭТО ЗАЩИЩАЕТ МАРШРУТ
 def dashboard():
-    """
-    Получение приветственного сообщения на Дашборде (защищен).
-    ---
-    tags:
-      - Пользователь
-    security:
-      - Bearer: []
-    responses:
-      200:
-        description: Приветственное сообщение для авторизованного пользователя.
-      401:
-        description: Отсутствует или недействительный токен.
-    """
     # Получаем ID пользователя из токена (помнить, что current_user_id это строка)
     current_user_id = get_jwt_identity()
     user = User.query.get(int(current_user_id))
@@ -198,30 +107,6 @@ def dashboard():
 @app.route('/api/resources', methods=['GET'])
 @jwt_required()
 def get_job_resources():
-    """
-    Получение списка активных ресурсов (Jooble, Indeed и т.д.).
-    ---
-    tags:
-      - Ресурсы
-    security:
-      - Bearer: []
-    responses:
-      200:
-        description: Список доступных ресурсов.
-        schema:
-          type: array
-          items:
-            type: object
-            properties:
-              id:
-                type: integer
-              name:
-                type: string
-              is_active:
-                type: boolean
-      401:
-        description: Отсутствует или недействительный токен.
-    """
     active_resources = JobResource.query.filter_by(is_active=True).all()
     resources_list = [resource.to_dict() for resource in active_resources]
     return jsonify(resources_list), 200
@@ -230,35 +115,6 @@ def get_job_resources():
 @app.route('/api/resource/add', methods=['POST'])
 @jwt_required() # Защищен токеном
 def add_job_resource():
-    """
-    Добавление нового ресурса (Jooble, Indeed) в базу данных.
-    ---
-    tags:
-      - Ресурсы
-    security:
-      - Bearer: []
-    parameters:
-      - in: body
-        name: body
-        required: true
-        schema:
-          type: object
-          properties:
-            name:
-              type: string
-              example: Jooble
-            base_url:
-              type: string
-              example: https://jooble.org/api/
-            is_active:
-              type: boolean
-              example: true
-    responses:
-      201:
-        description: Ресурс успешно добавлен.
-      409:
-        description: Ресурс с таким именем уже существует.
-    """
     data = request.get_json()
     if not data or not data.get('name') or not data.get('base_url'):
         return jsonify({'error': 'Name and URL are required'}), 400
@@ -287,52 +143,6 @@ def add_job_resource():
 @app.route('/api/search', methods=['POST'])
 @jwt_required()
 def search_jobs():
-    """
-    Поиск вакансий по ключевым словам, локации и уровню.
-    ---
-    tags:
-      - Поиск
-    security:
-      - Bearer: []
-    parameters:
-      - in: body
-        name: search_params
-        required: true
-        schema:
-          type: object
-          properties:
-            searchTerm:
-              type: string
-              description: Ключевые слова для поиска (например, Frontend developer).
-              example: Python developer
-            resourceIds:
-              type: array
-              items:
-                type: integer
-              description: ID выбранных ресурсов для поиска (например, [1]).
-            location:
-              type: string
-              description: Локация для поиска (например, Berlin, Europe).
-              example: Berlin
-            level:
-              type: string
-              description: Уровень соискателя (например, средний).
-              example: средний
-    responses:
-      200:
-        description: Успешный список найденных вакансий.
-        schema:
-          type: array
-          items:
-            type: object
-            properties:
-              title:
-                type: string
-              company:
-                type: string
-      400:
-        description: Отсутствуют обязательные параметры поиска.
-    """
     data = request.get_json()
     term = data.get('searchTerm')
     resource_ids = data.get('resourceIds')
@@ -405,37 +215,6 @@ def search_jobs():
 @app.route('/api/profile', methods=['GET', 'POST'])
 @jwt_required()
 def handle_applicant_profile():
-    """
-    Получение или обновление основного профиля соискателя (текст резюме, навыки).
-    ---
-    tags:
-      - Профиль
-    security:
-      - Bearer: []
-    parameters:
-      - in: body
-        name: body
-        required: false
-        schema:
-          type: object
-          properties:
-            identified_role:
-              type: string
-              example: Frontend Developer
-            resume_text:
-              type: string
-              description: Полный текст загруженного резюме.
-            skills:
-              type: array
-              items:
-                type: string
-              description: Список ключевых навыков соискателя.
-    responses:
-      200:
-        description: Данные профиля успешно получены или обновлены.
-      404:
-        description: Профиль соискателя не найден (для GET).
-    """
     user_id = get_jwt_identity()
 
     if request.method == 'GET':
@@ -509,35 +288,6 @@ def handle_applicant_profile():
 @app.route('/api/profile/blind', methods=['POST'])
 @jwt_required()
 def save_blind_profile():
-    """
-    Сохранение данных профиля для режима 'Слепой поиск' (RoleFocus).
-    ---
-    tags:
-      - Профиль
-    security:
-      - Bearer: []
-    parameters:
-      - in: body
-        name: blind_search_data
-        required: true
-        schema:
-          type: object
-          properties:
-            role:
-              type: string
-              example: Project Manager
-            level:
-              type: string
-              example: средний
-            location:
-              type: string
-              example: Berlin
-    responses:
-      201:
-        description: Данные Слепого поиска успешно сохранены.
-      400:
-        description: Отсутствуют обязательные поля.
-    """
     user_id = get_jwt_identity()
     data = request.get_json()
 
@@ -576,3 +326,8 @@ def save_blind_profile():
         db.session.rollback()
         print(f"Database error: {e}")
         return jsonify({'message': 'An error occurred while saving the profile'}), 500
+
+
+
+
+
