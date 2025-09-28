@@ -146,6 +146,8 @@ def search_jobs():
     data = request.get_json()
     term = data.get('searchTerm')
     resource_ids = data.get('resourceIds')
+    location = data.get('location')
+    level = data.get('level')
 
     # ... (проверка входных данных)
     if not term or not resource_ids:
@@ -164,10 +166,13 @@ def search_jobs():
 
 
             try:
+                # У Jooble нет прямого поля для level (начальный/средний), поэтому мы добавим его к ключевым словам (keywords)
+                full_keywords = f"{term} {level}"
+
                 # 1. Формирование запроса Jooble
                 json_data = {
-                    "keywords": term,
-                    "location": "Europe, Ukraine, USA", # Локации
+                    "keywords": full_keywords,
+                    "location": location
                     "page": 1
                 }
 
@@ -219,14 +224,30 @@ def handle_applicant_profile():
         if not profile:
             return jsonify({'message': 'Profile not created yet'}), 404
 
-        # Преобразование навыков для фронтенда
-        skills_list = [skill.name for skill in profile.skills]
+        # 1. Получаем последнюю сохраненную цель (RoleFocus)
+        role_focus = RoleFocus.query.filter_by(profile_id=profile.id).order_by(RoleFocus.date.desc()).first()
 
-        return jsonify({
-            'role': profile.identified_role,
+        # 2. Формируем ответ
+        response_data = {
+            'profile_id': profile.id,
             'resume_status': 'Loaded' if profile.resume_text else 'Empty',
-            'skills': skills_list
-        }), 200
+            'skills': [skill.name for skill in profile.skills], # Полный набор навыков
+            'target_role': None,
+            'target_level': None,
+            'location': None
+        }
+
+        if role_focus:
+            # Если найдена запись RoleFocus (т.е. Слепой поиск был настроен)
+            response_data['target_role'] = role_focus.target_role
+            response_data['target_level'] = role_focus.target_level
+
+            # Локация хранится в JSON-поле focused_skills_data
+            import json
+            focus_data = json.loads(role_focus.focused_skills_data) if role_focus.focused_skills_data else {}
+            response_data['location'] = focus_data.get('location')
+
+        return jsonify(response_data), 200
 
     elif request.method == 'POST':
         data = request.get_json()
