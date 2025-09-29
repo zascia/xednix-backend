@@ -413,7 +413,8 @@ def search_jobs():
                 return jsonify(final_results), 200
 
             # Если профиль не настроен или нет вакансий
-            return jsonify({'message': 'No relevant jobs found or profile incomplete'}), 200
+            # return jsonify({'message': 'No relevant jobs found or profile incomplete'}), 200
+            return jsonify([]), 200
 
 
 # Маршрут для получения или создания профиля соискателя
