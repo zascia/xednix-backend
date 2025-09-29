@@ -4,10 +4,10 @@ from dotenv import load_dotenv
 from flask import jsonify, request
 from app import app, db, bcrypt
 from models import User, JobResource, ApplicantProfile, Skill, RoleFocus
+from ai_matcher import ai_match_jobs
 import json
 import logging
-from flask_jwt_extended import create_access_token
-from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask_jwt_extended import create_access_token, jwt_required, get_jwt_identity
 from sqlalchemy.exc import IntegrityError
 
 logger = logging.getLogger(__name__)
@@ -344,9 +344,23 @@ def search_jobs():
         return jsonify({'error': 'Search term and at least one resource must be selected'}), 400
 
 
-
-    results = []
     resources_to_search = JobResource.query.filter(JobResource.id.in_(resource_ids)).all()
+
+    # --- 1. ПОЛУЧЕНИЕ ДАННЫХ ПРОФИЛЯ ДЛЯ ИИ ---
+    user_id = get_jwt_identity()
+    profile = ApplicantProfile.query.filter_by(user_id=user_id).first()
+    role_focus = RoleFocus.query.filter_by(profile_id=profile.id).order_by(RoleFocus.date.desc()).first()
+
+    # Полный набор навыков (100% дата сет)
+    full_user_skills = [skill.name for skill in profile.skills] if profile else []
+
+    # Исключаемые навыки
+    excluded_skills = []
+    if role_focus and role_focus.focused_skills_data:
+        focus_data = json.loads(role_focus.focused_skills_data)
+        excluded_skills = focus_data.get('excluded_skills', [])
+
+    raw_jobs = [] # Массив для сырых вакансий, полученных от Jooble
 
     for resource in resources_to_search:
         if resource.name == 'Jooble':
@@ -376,14 +390,16 @@ def search_jobs():
                 # 3. Обработка и форматирование результатов
                 if 'jobs' in jooble_data:
                     for job in jooble_data['jobs']:
-                        results.append({
+                        # Вместо добавления в results, добавляем в raw_jobs для ИИ
+                        raw_jobs.append({
                             'id': f"jooble_{job.get('id')}",
                             'title': job.get('title'),
                             'company': job.get('company'),
                             'location': job.get('location'),
                             'salary': job.get('salary') or 'N/A',
                             'source': resource.name,
-                            'link': job.get('link')
+                            'link': job.get('link'),
+                            'description': job.get('snippet', '') # Описание для анализа!
                         })
 
             except requests.exceptions.RequestException as e:
@@ -391,15 +407,14 @@ def search_jobs():
                 results.append({'error': f'Jooble search failed: {e}'})
 
 
-            # ВАЖНО: Здесь будет место для внедрения ИИ-матчинга
-            #
-            # if USE_AI_MATCHING:
-            #     matched_jobs = ai_matcher(raw_jobs, applicant_skills)
-            #     results.extend(matched_jobs)
-            # else:
-            #     results.extend(formatted_jobs)
+            # --- 2. ПРИМЕНЕНИЕ ИИ-МАТЧИНГА ---
+            if raw_jobs and full_user_skills:
+                final_results = ai_match_jobs(raw_jobs, full_user_skills, excluded_skills)
+                return jsonify(final_results), 200
 
-    return jsonify(results), 200
+            # Если профиль не настроен или нет вакансий
+            return jsonify({'message': 'No relevant jobs found or profile incomplete'}), 200
+
 
 # Маршрут для получения или создания профиля соискателя
 @app.route('/api/profile', methods=['GET', 'POST'])
