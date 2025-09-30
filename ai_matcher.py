@@ -1,17 +1,26 @@
 import re
 from nltk.corpus import stopwords
+from stop_words import get_stop_words
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Настройка стоп-слов для очистки текста (используем английский, так как вакансии часто на нем)
-STOPWORDS = set(stopwords.words('english'))
+
+# Настройка стоп-слов для всех поддерживаемых языков
+STOPWORDS = set()
+# 1. Английский (из NLTK)
+STOPWORDS.update(stopwords.words('english'))
+# 2. Польский (из stop-words)
+STOPWORDS.update(get_stop_words('polish'))
+# 3. Украинский (поскольку встроенных нет, можно добавить слова-заглушки или использовать внешний список)
+# Для простоты, пока используем только то, что есть.
+# Если матчинг по UA будет плохой, добавим внешний список вручную.
 
 def preprocess_text(text):
     """Очистка текста: нижний регистр, удаление пунктуации и стоп-слов."""
     if not text:
         return ""
-    # Удаление небуквенных символов и приведение к нижнему регистру
-    text = re.sub(r'[^a-zA-Z\s]', '', text.lower())
+    # Разрешаем все буквенные символы Unicode (\w) и пробелы, приводим к нижнему регистру
+    text = re.sub(r'[^\w\s]', '', text).lower()
     words = text.split()
     # Удаление стоп-слов
     return ' '.join([word for word in words if word not in STOPWORDS])
@@ -37,7 +46,7 @@ def calculate_relevance(user_skills_text, job_description_text):
     # Возвращаем процент (первый элемент массива, округленный до 2 знаков)
     return round(cosine_scores[0][0] * 100, 2)
 
-def ai_match_jobs(raw_jobs, full_user_skills, excluded_skills):
+def ai_match_jobs(raw_jobs, full_user_skills, excluded_skills, logger):
     """
     Основная функция матчинга: добавляет 'relevance_score' к каждой вакансии.
     """
@@ -63,6 +72,10 @@ def ai_match_jobs(raw_jobs, full_user_skills, excluded_skills):
                 penalty += 10 # Штраф в 10% за каждое найденное исключение
 
         final_score = max(0, score - penalty) # Гарантируем, что счет не отрицательный
+
+        # --- ЛОГИРОВАНИЕ СЧЁТА ---
+        logger.info(f"DEBUG SCORE for '{job.get('title')}': Raw Score={score}%, Penalty={penalty}%, Final={final_score}%")
+        # --------------------------
 
         # 5. Добавление результата
         job['relevance_score'] = final_score

@@ -360,6 +360,9 @@ def search_jobs():
         focus_data = json.loads(role_focus.focused_skills_data)
         excluded_skills = focus_data.get('excluded_skills', [])
 
+    logger.info(f"AI Input - Skills Count: {len(full_user_skills)}, Excl. Count: {len(excluded_skills)}")
+    logger.info(f"AI Input - Location: {location}, Level: {level}")
+
     raw_jobs = [] # Массив для сырых вакансий, полученных от Jooble
 
     for resource in resources_to_search:
@@ -402,19 +405,27 @@ def search_jobs():
                             'description': job.get('snippet', '') # Описание для анализа!
                         })
 
+                    # --- 2. ЛОГИРОВАНИЕ СЫРЫХ РЕЗУЛЬТАТОВ ---
+                    logger.info(f"Raw Jobs Received from Jooble: {len(raw_jobs)}")
+
+                    # 3. ПРИМЕНЕНИЕ ИИ-МАТЧИНГА
+                    if raw_jobs and full_user_skills:
+                        final_results = ai_match_jobs(raw_jobs, full_user_skills, excluded_skills, logger)
+
+                        # --- 3. ЛОГИРОВАНИЕ ФИНАЛЬНЫХ РЕЗУЛЬТАТОВ ---
+                        logger.info(f"Final Jobs after AI Match: {len(final_results)}")
+                        # ---------------------------------------------
+
+                        return jsonify(final_results), 200
+
+                    # Если профиль не настроен или нет вакансий
+                    # return jsonify({'message': 'No relevant jobs found or profile incomplete'}), 200
+                    return jsonify([]), 200
+
             except requests.exceptions.RequestException as e:
                 logger.error(f"Error fetching data from Jooble: {e}")
                 results.append({'error': f'Jooble search failed: {e}'})
 
-
-            # --- 2. ПРИМЕНЕНИЕ ИИ-МАТЧИНГА ---
-            if raw_jobs and full_user_skills:
-                final_results = ai_match_jobs(raw_jobs, full_user_skills, excluded_skills)
-                return jsonify(final_results), 200
-
-            # Если профиль не настроен или нет вакансий
-            # return jsonify({'message': 'No relevant jobs found or profile incomplete'}), 200
-            return jsonify([]), 200
 
 
 # Маршрут для получения или создания профиля соискателя
@@ -633,6 +644,8 @@ def save_full_skills():
     data = request.get_json()
     skills_list = data.get('skills', [])
     excluded_skills_list = data.get('excluded_skills', [])
+    target_level = data.get('level')
+    location = data.get('location')
 
     if not skills_list:
         return jsonify({'message': 'Skills list cannot be empty'}), 400
@@ -663,14 +676,14 @@ def save_full_skills():
         # Формируем JSON для RoleFocus, включая список исключений
         focus_data_json = json.dumps({
             'excluded_skills': excluded_skills_list,
-            'location': 'N/A' # Заглушка, если локация не была выбрана
+            'location': location
         })
 
         # Создаем новую запись RoleFocus
         focus = RoleFocus(
             profile_id=profile.id,
             target_role='Manual Skill Set',  # Временная роль для этого режима
-            target_level='All',
+            target_level=target_level,
             focused_skills_data=focus_data_json
         )
         db.session.add(focus)
